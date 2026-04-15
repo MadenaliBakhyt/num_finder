@@ -5,12 +5,17 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from backend.services.excel import (
+    MAX_COMPANIES,
+    build_results_workbook,
+    read_company_names,
+)
 from backend.services.parser import extract_phone_from_website
 from backend.services.search import find_company_website
 
@@ -44,12 +49,24 @@ class SearchResponse(BaseModel):
     phone: Optional[str] = None
 
 
-@app.post("/search", response_model=SearchResponse)
-def search(req: SearchRequest) -> SearchResponse:
-    company = req.company.strip()
-    if not company:
-        raise HTTPException(status_code=400, detail="company must not be empty")
+class BulkSearchResponse(BaseModel):
+    count: int
+    rows: list[SearchResponse]
+    truncated: bool = False
 
+
+class ExportRow(BaseModel):
+    company: str
+    website: Optional[str] = None
+    phone: Optional[str] = None
+
+
+class ExportRequest(BaseModel):
+    rows: list[ExportRow]
+
+
+def _lookup_one(company: str) -> SearchResponse:
+    company = company.strip()
     logger.info("🔎 lookup: %s", company)
 
     try:
@@ -66,6 +83,75 @@ def search(req: SearchRequest) -> SearchResponse:
             logger.exception("phone extraction crashed: %s", e)
 
     return SearchResponse(company=company, website=website, phone=phone)
+
+
+@app.post("/search", response_model=SearchResponse)
+def search(req: SearchRequest) -> SearchResponse:
+    company = req.company.strip()
+    if not company:
+        raise HTTPException(status_code=400, detail="company must not be empty")
+    return _lookup_one(company)
+
+
+@app.post("/search-excel", response_model=BulkSearchResponse)
+async def search_excel(file: UploadFile = File(...)) -> BulkSearchResponse:
+    filename = (file.filename or "").lower()
+    if not filename.endswith((".xlsx", ".xlsm")):
+        raise HTTPException(
+            status_code=400,
+            detail="Only .xlsx/.xlsm files are supported.",
+        )
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+
+    try:
+        names = read_company_names(content)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    if not names:
+        raise HTTPException(
+            status_code=400,
+            detail="No company names found in the first column.",
+        )
+
+    logger.info("bulk lookup: %d companies from %s", len(names), file.filename)
+
+    rows: list[SearchResponse] = []
+    for idx, name in enumerate(names, start=1):
+        logger.info("[%d/%d] %s", idx, len(names), name)
+        try:
+            rows.append(_lookup_one(name))
+        except Exception as e:
+            logger.exception("lookup failed for %r: %s", name, e)
+            rows.append(SearchResponse(company=name, website=None, phone=None))
+
+    return BulkSearchResponse(
+        count=len(rows),
+        rows=rows,
+        truncated=len(names) >= MAX_COMPANIES,
+    )
+
+
+@app.post("/export-excel")
+def export_excel(req: ExportRequest) -> Response:
+    """Turn a list of result rows back into a downloadable xlsx file."""
+    if not req.rows:
+        raise HTTPException(status_code=400, detail="No rows to export.")
+
+    data = build_results_workbook([r.model_dump() for r in req.rows])
+    headers = {
+        "Content-Disposition": 'attachment; filename="companies_results.xlsx"'
+    }
+    return Response(
+        content=data,
+        media_type=(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        ),
+        headers=headers,
+    )
 
 
 @app.get("/health")

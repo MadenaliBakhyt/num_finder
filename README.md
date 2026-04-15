@@ -15,8 +15,9 @@ backend/
   services/
     search.py          # Company website finder (DuckDuckGo)
     parser.py          # Phone-number extractor
+    excel.py           # xlsx reader/writer for bulk lookup
 frontend/
-  index.html           # Single-page UI
+  index.html           # Single-page UI (single + bulk lookup)
 requirements.txt
 ```
 
@@ -51,6 +52,27 @@ Response:
 ```
 
 `website` and/or `phone` can be `null` if nothing was found.
+
+### Bulk lookup from Excel
+
+`POST /search-excel` — multipart form upload, field name `file`, must be
+`.xlsx`/`.xlsm`. Company names are read from the **first column**; header
+rows (`Company`, `Компания`, `Общий итог`, ...) and blanks are skipped. The
+server caps input at 100 rows.
+
+Response:
+```json
+{
+  "count": 2,
+  "truncated": false,
+  "rows": [
+    { "company": "...", "website": "...", "phone": "..." }
+  ]
+}
+```
+
+`POST /export-excel` — accepts the same `rows` array and returns a generated
+`.xlsx` file (used by the **Download results** button on the frontend).
 
 `GET /health` → `{"status": "ok"}`
 

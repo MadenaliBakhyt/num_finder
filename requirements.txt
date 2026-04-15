@@ -4,3 +4,5 @@ requests==2.32.3
 beautifulsoup4==4.12.3
 ddgs==6.2.5
 pydantic==2.9.2
+openpyxl==3.1.5
+python-multipart==0.0.12

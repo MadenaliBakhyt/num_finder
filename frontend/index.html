@@ -11,7 +11,9 @@
         --text: #e2e8f0;
         --muted: #94a3b8;
         --accent: #38bdf8;
+        --accent-2: #34d399;
         --error: #f87171;
+        --border: #334155;
       }
       * { box-sizing: border-box; }
       body {
@@ -24,42 +26,63 @@
         display: flex;
         align-items: flex-start;
         justify-content: center;
-        padding: 48px 16px;
+        padding: 40px 16px;
+      }
+      .wrap {
+        width: 100%;
+        max-width: 880px;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
       }
       .card {
         background: var(--card);
         border-radius: 12px;
-        padding: 28px 32px;
-        width: 100%;
-        max-width: 560px;
+        padding: 24px 28px;
         box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
       }
       h1 {
         margin: 0 0 4px 0;
         font-size: 22px;
       }
+      h2 {
+        margin: 0 0 12px 0;
+        font-size: 16px;
+        color: var(--muted);
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
       p.subtitle {
-        margin: 0 0 20px 0;
+        margin: 0 0 18px 0;
         color: var(--muted);
         font-size: 14px;
       }
       form {
         display: flex;
         gap: 8px;
-        margin-bottom: 20px;
+        flex-wrap: wrap;
+        margin-bottom: 14px;
       }
       input[type="text"] {
         flex: 1;
+        min-width: 240px;
         padding: 12px 14px;
         border-radius: 8px;
-        border: 1px solid #334155;
+        border: 1px solid var(--border);
         background: #0f172a;
         color: var(--text);
         font-size: 15px;
       }
-      input[type="text"]:focus {
-        outline: none;
-        border-color: var(--accent);
+      input[type="text"]:focus { outline: none; border-color: var(--accent); }
+      input[type="file"] {
+        flex: 1;
+        min-width: 240px;
+        padding: 10px;
+        border-radius: 8px;
+        border: 1px dashed var(--border);
+        background: #0f172a;
+        color: var(--text);
       }
       button {
         padding: 12px 18px;
@@ -71,24 +94,18 @@
         cursor: pointer;
         font-size: 15px;
       }
-      button[disabled] {
-        opacity: 0.6;
-        cursor: not-allowed;
-      }
-      .result {
-        border-top: 1px solid #334155;
-        padding-top: 16px;
+      button.secondary { background: var(--accent-2); }
+      button[disabled] { opacity: 0.55; cursor: not-allowed; }
+
+      .result, .bulk-status {
+        border-top: 1px solid var(--border);
+        padding-top: 14px;
         font-size: 14px;
         line-height: 1.6;
-        white-space: pre-wrap;
-        word-break: break-word;
       }
       .row { display: flex; gap: 10px; }
-      .label {
-        color: var(--muted);
-        min-width: 80px;
-      }
-      .value a { color: var(--accent); text-decoration: none; }
+      .label { color: var(--muted); min-width: 80px; }
+      .value a { color: var(--accent); text-decoration: none; word-break: break-all; }
       .value a:hover { text-decoration: underline; }
       .error { color: var(--error); }
       .hint { color: var(--muted); font-size: 13px; }
@@ -103,65 +120,117 @@
         vertical-align: middle;
       }
       @keyframes spin { to { transform: rotate(360deg); } }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 12px;
+        font-size: 13px;
+      }
+      th, td {
+        text-align: left;
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--border);
+        vertical-align: top;
+        word-break: break-word;
+      }
+      th {
+        color: var(--muted);
+        font-weight: 600;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      tr:last-child td { border-bottom: none; }
+      .actions { display: flex; gap: 8px; margin-top: 14px; }
+      .missing { color: var(--muted); font-style: italic; }
     </style>
   </head>
   <body>
-    <div class="card">
-      <h1>Company Lookup</h1>
-      <p class="subtitle">Find a company's official website and phone number.</p>
+    <div class="wrap">
+      <div class="card">
+        <h1>Company Lookup</h1>
+        <p class="subtitle">
+          Find a company's official website and phone number — one at a time,
+          or in bulk from an Excel file.
+        </p>
+      </div>
 
-      <form id="search-form">
-        <input
-          id="company"
-          type="text"
-          placeholder="e.g. TOO Ferronordic Kazakhstan"
-          autocomplete="off"
-          required
-        />
-        <button type="submit" id="submit">Search</button>
-      </form>
+      <div class="card">
+        <h2>Single lookup</h2>
+        <form id="single-form">
+          <input
+            id="company"
+            type="text"
+            placeholder="e.g. TOO Ferronordic Kazakhstan"
+            autocomplete="off"
+            required
+          />
+          <button type="submit" id="single-submit">Search</button>
+        </form>
+        <div id="single-result" class="result">
+          <span class="hint">Enter a company name and press Search.</span>
+        </div>
+      </div>
 
-      <div id="result" class="result">
-        <span class="hint">Enter a company name and press Search.</span>
+      <div class="card">
+        <h2>Bulk lookup from Excel</h2>
+        <p class="subtitle">
+          Upload an <code>.xlsx</code> file. Company names are read from the
+          first column; header rows and blanks are skipped automatically.
+        </p>
+        <form id="bulk-form">
+          <input id="file" type="file" accept=".xlsx,.xlsm" required />
+          <button type="submit" id="bulk-submit">Process</button>
+        </form>
+        <div id="bulk-status" class="bulk-status">
+          <span class="hint">No file processed yet.</span>
+        </div>
+        <div id="bulk-results"></div>
+        <div class="actions">
+          <button id="download-btn" class="secondary" type="button" disabled>
+            Download results (.xlsx)
+          </button>
+        </div>
       </div>
     </div>
 
     <script>
-      const form = document.getElementById("search-form");
-      const input = document.getElementById("company");
-      const button = document.getElementById("submit");
-      const result = document.getElementById("result");
+      const escapeHtml = (s) =>
+        String(s ?? "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
 
-      function render(data) {
+      // ---- single lookup ----
+      const singleForm = document.getElementById("single-form");
+      const singleInput = document.getElementById("company");
+      const singleBtn = document.getElementById("single-submit");
+      const singleResult = document.getElementById("single-result");
+
+      function renderSingle(data) {
         const website = data.website
-          ? `<a href="${data.website}" target="_blank" rel="noopener">${data.website}</a>`
-          : '<span class="hint">not found</span>';
+          ? `<a href="${escapeHtml(data.website)}" target="_blank" rel="noopener">${escapeHtml(data.website)}</a>`
+          : '<span class="missing">not found</span>';
         const phone = data.phone
-          ? data.phone
-          : '<span class="hint">not found</span>';
-        result.innerHTML = `
+          ? escapeHtml(data.phone)
+          : '<span class="missing">not found</span>';
+        singleResult.innerHTML = `
           <div class="row"><div class="label">Company</div><div class="value">${escapeHtml(data.company || "")}</div></div>
           <div class="row"><div class="label">Website</div><div class="value">${website}</div></div>
           <div class="row"><div class="label">Phone</div><div class="value">${phone}</div></div>
         `;
       }
 
-      function escapeHtml(s) {
-        return String(s)
-          .replace(/&/g, "&amp;")
-          .replace(/</g, "&lt;")
-          .replace(/>/g, "&gt;")
-          .replace(/"/g, "&quot;")
-          .replace(/'/g, "&#39;");
-      }
-
-      form.addEventListener("submit", async (e) => {
+      singleForm.addEventListener("submit", async (e) => {
         e.preventDefault();
-        const company = input.value.trim();
+        const company = singleInput.value.trim();
         if (!company) return;
 
-        button.disabled = true;
-        result.innerHTML =
+        singleBtn.disabled = true;
+        singleResult.innerHTML =
           '<span class="spinner"></span> Searching — this can take 10–30 seconds…';
 
         try {
@@ -170,19 +239,130 @@
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ company }),
           });
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${await resp.text()}`);
+          renderSingle(await resp.json());
+        } catch (err) {
+          singleResult.innerHTML =
+            '<span class="error">Error: ' + escapeHtml(err.message) + "</span>";
+        } finally {
+          singleBtn.disabled = false;
+        }
+      });
 
+      // ---- bulk lookup ----
+      const bulkForm = document.getElementById("bulk-form");
+      const fileInput = document.getElementById("file");
+      const bulkBtn = document.getElementById("bulk-submit");
+      const bulkStatus = document.getElementById("bulk-status");
+      const bulkResults = document.getElementById("bulk-results");
+      const downloadBtn = document.getElementById("download-btn");
+
+      let lastRows = [];
+
+      function renderTable(rows) {
+        if (!rows.length) {
+          bulkResults.innerHTML = "";
+          return;
+        }
+        const body = rows
+          .map((r) => {
+            const site = r.website
+              ? `<a href="${escapeHtml(r.website)}" target="_blank" rel="noopener">${escapeHtml(r.website)}</a>`
+              : '<span class="missing">—</span>';
+            const phone = r.phone
+              ? escapeHtml(r.phone)
+              : '<span class="missing">—</span>';
+            return `<tr>
+              <td>${escapeHtml(r.company)}</td>
+              <td>${site}</td>
+              <td>${phone}</td>
+            </tr>`;
+          })
+          .join("");
+
+        bulkResults.innerHTML = `
+          <table>
+            <thead>
+              <tr><th>Company</th><th>Website</th><th>Phone</th></tr>
+            </thead>
+            <tbody>${body}</tbody>
+          </table>
+        `;
+      }
+
+      bulkForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const file = fileInput.files[0];
+        if (!file) return;
+
+        bulkBtn.disabled = true;
+        downloadBtn.disabled = true;
+        lastRows = [];
+        bulkResults.innerHTML = "";
+        bulkStatus.innerHTML =
+          '<span class="spinner"></span> Uploading and processing — this can take a few minutes for large files…';
+
+        try {
+          const fd = new FormData();
+          fd.append("file", file);
+
+          const resp = await fetch("/search-excel", {
+            method: "POST",
+            body: fd,
+          });
           if (!resp.ok) {
-            const msg = await resp.text();
-            throw new Error(`HTTP ${resp.status}: ${msg}`);
+            let msg = `HTTP ${resp.status}`;
+            try {
+              const j = await resp.json();
+              if (j.detail) msg = j.detail;
+            } catch (_) {}
+            throw new Error(msg);
           }
 
           const data = await resp.json();
-          render(data);
+          lastRows = data.rows || [];
+
+          const okCount = lastRows.filter((r) => r.website).length;
+          let statusMsg = `Processed <strong>${data.count}</strong> companies — found websites for <strong>${okCount}</strong>.`;
+          if (data.truncated) {
+            statusMsg += ' <span class="hint">(input was capped at the server limit)</span>';
+          }
+          bulkStatus.innerHTML = statusMsg;
+
+          renderTable(lastRows);
+          downloadBtn.disabled = lastRows.length === 0;
         } catch (err) {
-          result.innerHTML =
+          bulkStatus.innerHTML =
             '<span class="error">Error: ' + escapeHtml(err.message) + "</span>";
         } finally {
-          button.disabled = false;
+          bulkBtn.disabled = false;
+        }
+      });
+
+      downloadBtn.addEventListener("click", async () => {
+        if (!lastRows.length) return;
+        downloadBtn.disabled = true;
+        try {
+          const resp = await fetch("/export-excel", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ rows: lastRows }),
+          });
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+          const blob = await resp.blob();
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = "companies_results.xlsx";
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          URL.revokeObjectURL(url);
+        } catch (err) {
+          bulkStatus.innerHTML =
+            '<span class="error">Download failed: ' + escapeHtml(err.message) + "</span>";
+        } finally {
+          downloadBtn.disabled = false;
         }
       });
     </script>
