@@ -144,6 +144,65 @@
       tr:last-child td { border-bottom: none; }
       .actions { display: flex; gap: 8px; margin-top: 14px; }
       .missing { color: var(--muted); font-style: italic; }
+
+      .options {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 18px;
+        margin: 14px 0 4px 0;
+        font-size: 14px;
+        color: var(--text);
+      }
+      .options label {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+      }
+      .options input[type="checkbox"] { accent-color: var(--accent); }
+
+      .preview-wrap { overflow-x: auto; margin-top: 8px; }
+      table.preview th, table.preview td {
+        border: 1px solid var(--border);
+        padding: 6px 10px;
+        min-width: 90px;
+      }
+      table.preview thead th {
+        background: #0f172a;
+        position: sticky;
+        top: 0;
+      }
+      table.preview th.col-letter {
+        text-align: center;
+        font-weight: 700;
+        color: var(--accent);
+      }
+      table.preview th.col-letter label {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        cursor: pointer;
+      }
+      table.preview th.col-letter input[type="radio"] {
+        accent-color: var(--accent);
+        transform: scale(1.1);
+      }
+      table.preview th.col-letter.selected {
+        background: #0b3a52;
+      }
+      .row-num {
+        color: var(--muted);
+        text-align: center;
+        font-size: 12px;
+        background: #0f172a;
+      }
+      .skipped-row td:not(.row-num) {
+        color: var(--muted);
+        text-decoration: line-through;
+        opacity: 0.6;
+      }
+      .hidden { display: none !important; }
     </style>
   </head>
   <body>
@@ -176,13 +235,32 @@
       <div class="card">
         <h2>Bulk lookup from Excel</h2>
         <p class="subtitle">
-          Upload an <code>.xlsx</code> file. Company names are read from the
-          first column; header rows and blanks are skipped automatically.
+          Upload an <code>.xlsx</code> file. A preview appears so you can pick
+          the column that holds company names.
         </p>
+
         <form id="bulk-form">
           <input id="file" type="file" accept=".xlsx,.xlsm" required />
-          <button type="submit" id="bulk-submit">Process</button>
+          <button type="submit" id="bulk-submit" disabled>Process</button>
         </form>
+
+        <div id="preview-section" class="hidden">
+          <div class="options">
+            <label>
+              <input id="opt-skip-first" type="checkbox" />
+              Skip first row (header like "Company name")
+            </label>
+            <label>
+              <input id="opt-dedupe" type="checkbox" checked />
+              Remove duplicates
+            </label>
+          </div>
+          <p class="hint" id="preview-hint">
+            Click a column letter to pick which column to process.
+          </p>
+          <div id="preview-wrap" class="preview-wrap"></div>
+        </div>
+
         <div id="bulk-status" class="bulk-status">
           <span class="hint">No file processed yet.</span>
         </div>
@@ -256,8 +334,127 @@
       const bulkStatus = document.getElementById("bulk-status");
       const bulkResults = document.getElementById("bulk-results");
       const downloadBtn = document.getElementById("download-btn");
+      const previewSection = document.getElementById("preview-section");
+      const previewWrap = document.getElementById("preview-wrap");
+      const optSkipFirst = document.getElementById("opt-skip-first");
+      const optDedupe = document.getElementById("opt-dedupe");
 
       let lastRows = [];
+      let selectedColumn = 0;
+      let previewData = null;
+
+      function renderPreview(data) {
+        previewData = data;
+        const columns = data.columns || [];
+        const rows = data.rows || [];
+
+        if (!columns.length) {
+          previewWrap.innerHTML =
+            '<span class="error">No columns detected in the file.</span>';
+          return;
+        }
+
+        if (selectedColumn >= columns.length) selectedColumn = 0;
+
+        const headerCells = columns
+          .map(
+            (letter, i) => `
+              <th class="col-letter${i === selectedColumn ? " selected" : ""}" data-col="${i}">
+                <label>
+                  <input type="radio" name="col-pick" value="${i}" ${i === selectedColumn ? "checked" : ""} />
+                  ${escapeHtml(letter)}
+                </label>
+              </th>`
+          )
+          .join("");
+
+        const skipFirst = optSkipFirst.checked;
+        const bodyRows = rows
+          .map((row, rIdx) => {
+            const cells = columns
+              .map((_, cIdx) => `<td>${escapeHtml(row[cIdx] || "")}</td>`)
+              .join("");
+            const skipClass = skipFirst && rIdx === 0 ? " skipped-row" : "";
+            return `<tr class="${skipClass.trim()}">
+              <td class="row-num">${rIdx + 1}</td>${cells}
+            </tr>`;
+          })
+          .join("");
+
+        previewWrap.innerHTML = `
+          <table class="preview">
+            <thead>
+              <tr>
+                <th class="row-num">#</th>
+                ${headerCells}
+              </tr>
+            </thead>
+            <tbody>${bodyRows}</tbody>
+          </table>
+        `;
+
+        // Wire up column radio selection.
+        previewWrap
+          .querySelectorAll('input[name="col-pick"]')
+          .forEach((input) => {
+            input.addEventListener("change", () => {
+              selectedColumn = Number(input.value);
+              // Re-render to update highlighted column.
+              renderPreview(previewData);
+            });
+          });
+      }
+
+      async function loadPreview(file) {
+        bulkStatus.innerHTML =
+          '<span class="spinner"></span> Reading file…';
+        previewSection.classList.add("hidden");
+        bulkBtn.disabled = true;
+
+        try {
+          const fd = new FormData();
+          fd.append("file", file);
+          const resp = await fetch("/preview-excel", {
+            method: "POST",
+            body: fd,
+          });
+          if (!resp.ok) {
+            let msg = `HTTP ${resp.status}`;
+            try {
+              const j = await resp.json();
+              if (j.detail) msg = j.detail;
+            } catch (_) {}
+            throw new Error(msg);
+          }
+
+          const data = await resp.json();
+          selectedColumn = 0;
+          renderPreview(data);
+          previewSection.classList.remove("hidden");
+          bulkBtn.disabled = false;
+          bulkStatus.innerHTML =
+            '<span class="hint">Pick a column and press Process.</span>';
+        } catch (err) {
+          bulkStatus.innerHTML =
+            '<span class="error">Preview failed: ' +
+            escapeHtml(err.message) +
+            "</span>";
+        }
+      }
+
+      fileInput.addEventListener("change", () => {
+        const file = fileInput.files[0];
+        if (!file) {
+          previewSection.classList.add("hidden");
+          bulkBtn.disabled = true;
+          return;
+        }
+        loadPreview(file);
+      });
+
+      optSkipFirst.addEventListener("change", () => {
+        if (previewData) renderPreview(previewData);
+      });
 
       function renderTable(rows) {
         if (!rows.length) {
@@ -305,6 +502,9 @@
         try {
           const fd = new FormData();
           fd.append("file", file);
+          fd.append("column", String(selectedColumn));
+          fd.append("skip_first_row", optSkipFirst.checked ? "true" : "false");
+          fd.append("dedupe", optDedupe.checked ? "true" : "false");
 
           const resp = await fetch("/search-excel", {
             method: "POST",

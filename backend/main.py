@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 from backend.services.excel import (
     MAX_COMPANIES,
     build_results_workbook,
+    preview_excel,
     read_company_names,
 )
 from backend.services.parser import extract_phone_from_website
@@ -93,8 +94,7 @@ def search(req: SearchRequest) -> SearchResponse:
     return _lookup_one(company)
 
 
-@app.post("/search-excel", response_model=BulkSearchResponse)
-async def search_excel(file: UploadFile = File(...)) -> BulkSearchResponse:
+def _validate_xlsx(file: UploadFile) -> None:
     filename = (file.filename or "").lower()
     if not filename.endswith((".xlsx", ".xlsm")):
         raise HTTPException(
@@ -102,22 +102,67 @@ async def search_excel(file: UploadFile = File(...)) -> BulkSearchResponse:
             detail="Only .xlsx/.xlsm files are supported.",
         )
 
+
+@app.post("/preview-excel")
+async def preview_excel_endpoint(file: UploadFile = File(...)) -> dict:
+    """Return column letters and the first few rows of an uploaded xlsx."""
+    _validate_xlsx(file)
+
     content = await file.read()
     if not content:
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
 
     try:
-        names = read_company_names(content)
+        preview = preview_excel(content)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    if not preview.get("total_columns"):
+        raise HTTPException(
+            status_code=400,
+            detail="The uploaded file appears to be empty.",
+        )
+
+    return preview
+
+
+@app.post("/search-excel", response_model=BulkSearchResponse)
+async def search_excel(
+    file: UploadFile = File(...),
+    column: int = Form(0),
+    skip_first_row: bool = Form(False),
+    dedupe: bool = Form(True),
+) -> BulkSearchResponse:
+    _validate_xlsx(file)
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+
+    try:
+        names = read_company_names(
+            content,
+            column_index=column,
+            skip_first_row=skip_first_row,
+            dedupe=dedupe,
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
     if not names:
         raise HTTPException(
             status_code=400,
-            detail="No company names found in the first column.",
+            detail="No company names found in the selected column.",
         )
 
-    logger.info("bulk lookup: %d companies from %s", len(names), file.filename)
+    logger.info(
+        "bulk lookup: %d companies from %s (column=%d, skip_first_row=%s, dedupe=%s)",
+        len(names),
+        file.filename,
+        column,
+        skip_first_row,
+        dedupe,
+    )
 
     rows: list[SearchResponse] = []
     for idx, name in enumerate(names, start=1):
