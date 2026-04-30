@@ -9,7 +9,7 @@ from openpyxl import Workbook, load_workbook
 
 logger = logging.getLogger(__name__)
 
-MAX_COMPANIES = 100  # cap to avoid runaway processing
+MAX_COMPANIES = 10000  # cap to avoid runaway processing
 PREVIEW_ROWS = 5     # number of rows returned by preview_excel
 
 
