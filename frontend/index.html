@@ -1,280 +1,234 @@
 <!doctype html>
-<html lang="en">
+<html lang="ru">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Company Lookup</title>
+    <title>EXIM — Поиск компаний</title>
     <style>
       :root {
-        --bg: #0f172a;
-        --card: #1e293b;
-        --text: #e2e8f0;
-        --muted: #94a3b8;
-        --accent: #38bdf8;
-        --accent-2: #34d399;
-        --error: #f87171;
-        --border: #334155;
+        --bg: #f3f4f6;
+        --card: #ffffff;
+        --text: #1a1a1a;
+        --muted: #6b7280;
+        --accent: #E31E24;
+        --accent-hover: #c41920;
+        --accent-light: #fef2f2;
+        --green: #16a34a;
+        --error: #dc2626;
+        --border: #e5e7eb;
       }
-      * { box-sizing: border-box; }
+      * { box-sizing: border-box; margin: 0; }
       body {
-        margin: 0;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
           Roboto, Helvetica, Arial, sans-serif;
         background: var(--bg);
         color: var(--text);
         min-height: 100vh;
         display: flex;
-        align-items: flex-start;
         justify-content: center;
-        padding: 40px 16px;
+        padding: 32px 16px;
       }
       .wrap {
         width: 100%;
-        max-width: 880px;
+        max-width: 900px;
         display: flex;
         flex-direction: column;
-        gap: 20px;
+        gap: 16px;
       }
       .card {
         background: var(--card);
         border-radius: 12px;
-        padding: 24px 28px;
-        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-      }
-      h1 {
-        margin: 0 0 4px 0;
-        font-size: 22px;
-      }
-      h2 {
-        margin: 0 0 12px 0;
-        font-size: 16px;
-        color: var(--muted);
-        font-weight: 600;
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
-      }
-      p.subtitle {
-        margin: 0 0 18px 0;
-        color: var(--muted);
-        font-size: 14px;
-      }
-      form {
-        display: flex;
-        gap: 8px;
-        flex-wrap: wrap;
-        margin-bottom: 14px;
-      }
-      input[type="text"] {
-        flex: 1;
-        min-width: 240px;
-        padding: 12px 14px;
-        border-radius: 8px;
+        padding: 22px 26px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 4px 12px rgba(0,0,0,0.04);
         border: 1px solid var(--border);
-        background: #0f172a;
-        color: var(--text);
-        font-size: 15px;
+      }
+
+      /* ---------- header ---------- */
+      .header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+      .header-left { display: flex; align-items: center; gap: 14px; }
+      .header-left img { height: 34px; }
+      .header-left h1 { font-size: 20px; font-weight: 700; }
+      .api-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+      .api-row input {
+        width: 220px;
+        padding: 6px 10px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        font-size: 13px;
+        background: var(--bg);
+      }
+      .api-row input:focus { outline: none; border-color: var(--accent); }
+
+      /* ---------- section ---------- */
+      h2 {
+        font-size: 14px;
+        color: var(--accent);
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        margin-bottom: 12px;
+      }
+      .subtitle { color: var(--muted); font-size: 13px; margin-bottom: 14px; }
+
+      /* ---------- form ---------- */
+      form { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+      input[type="text"] {
+        flex: 1; min-width: 240px;
+        padding: 11px 14px; border-radius: 8px;
+        border: 1px solid var(--border); font-size: 14px;
       }
       input[type="text"]:focus { outline: none; border-color: var(--accent); }
       input[type="file"] {
-        flex: 1;
-        min-width: 240px;
-        padding: 10px;
-        border-radius: 8px;
+        flex: 1; min-width: 240px;
+        padding: 10px; border-radius: 8px;
         border: 1px dashed var(--border);
-        background: #0f172a;
-        color: var(--text);
+        font-size: 13px;
+        background: var(--bg);
       }
       button {
-        padding: 12px 18px;
-        border: none;
-        border-radius: 8px;
-        background: var(--accent);
-        color: #0f172a;
-        font-weight: 600;
-        cursor: pointer;
-        font-size: 15px;
+        padding: 11px 20px; border: none; border-radius: 8px;
+        background: var(--accent); color: #fff; font-weight: 600;
+        cursor: pointer; font-size: 14px; transition: background .15s;
       }
-      button.secondary { background: var(--accent-2); }
-      button[disabled] { opacity: 0.55; cursor: not-allowed; }
+      button:hover { background: var(--accent-hover); }
+      button.secondary { background: var(--green); }
+      button.secondary:hover { background: #15803d; }
+      button[disabled] { opacity: 0.5; cursor: not-allowed; }
 
+      /* ---------- result ---------- */
       .result, .bulk-status {
         border-top: 1px solid var(--border);
-        padding-top: 14px;
-        font-size: 14px;
-        line-height: 1.6;
+        padding-top: 12px; font-size: 14px; line-height: 1.6;
       }
       .row { display: flex; gap: 10px; }
-      .label { color: var(--muted); min-width: 80px; }
+      .label { color: var(--muted); min-width: 80px; font-weight: 500; }
       .value a { color: var(--accent); text-decoration: none; word-break: break-all; }
       .value a:hover { text-decoration: underline; }
       .error { color: var(--error); }
       .hint { color: var(--muted); font-size: 13px; }
+      .missing { color: var(--muted); font-style: italic; }
+
+      /* ---------- spinner ---------- */
       .spinner {
-        display: inline-block;
-        width: 14px; height: 14px;
-        border: 2px solid #475569;
-        border-top-color: var(--accent);
-        border-radius: 50%;
-        animation: spin 0.8s linear infinite;
-        margin-right: 8px;
-        vertical-align: middle;
+        display: inline-block; width: 14px; height: 14px;
+        border: 2px solid var(--border); border-top-color: var(--accent);
+        border-radius: 50%; animation: spin .7s linear infinite;
+        margin-right: 8px; vertical-align: middle;
       }
       @keyframes spin { to { transform: rotate(360deg); } }
 
-      table {
-        width: 100%;
-        border-collapse: collapse;
-        margin-top: 12px;
-        font-size: 13px;
+      /* ---------- options ---------- */
+      .options {
+        display: flex; flex-wrap: wrap; gap: 18px;
+        margin: 14px 0 4px 0; font-size: 14px;
       }
+      .options label { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+      .options input[type="checkbox"] { accent-color: var(--accent); }
+
+      /* ---------- preview table ---------- */
+      .preview-wrap { overflow-x: auto; margin-top: 8px; }
+      table { width: 100%; border-collapse: collapse; font-size: 13px; }
       th, td {
-        text-align: left;
-        padding: 8px 10px;
+        text-align: left; padding: 7px 10px;
         border-bottom: 1px solid var(--border);
-        vertical-align: top;
-        word-break: break-word;
+        vertical-align: top; word-break: break-word;
       }
       th {
-        color: var(--muted);
-        font-weight: 600;
-        font-size: 12px;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
+        color: var(--muted); font-weight: 600; font-size: 12px;
+        text-transform: uppercase; letter-spacing: .04em;
       }
       tr:last-child td { border-bottom: none; }
       .actions { display: flex; gap: 8px; margin-top: 14px; }
-      .missing { color: var(--muted); font-style: italic; }
 
-      .options {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 18px;
-        margin: 14px 0 4px 0;
-        font-size: 14px;
-        color: var(--text);
-      }
-      .options label {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        cursor: pointer;
-      }
-      .options input[type="checkbox"] { accent-color: var(--accent); }
-
-      .preview-wrap { overflow-x: auto; margin-top: 8px; }
       table.preview th, table.preview td {
         border: 1px solid var(--border);
-        padding: 6px 10px;
-        min-width: 90px;
+        padding: 6px 10px; min-width: 90px;
       }
-      table.preview thead th {
-        background: #0f172a;
-        position: sticky;
-        top: 0;
-      }
-      table.preview th.col-letter {
-        text-align: center;
-        font-weight: 700;
-        color: var(--accent);
-      }
+      table.preview thead th { background: var(--bg); position: sticky; top: 0; }
+      table.preview th.col-letter { text-align: center; font-weight: 700; color: var(--accent); }
       table.preview th.col-letter label {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 4px;
-        cursor: pointer;
+        display: flex; flex-direction: column;
+        align-items: center; gap: 4px; cursor: pointer;
       }
-      table.preview th.col-letter input[type="radio"] {
-        accent-color: var(--accent);
-        transform: scale(1.1);
-      }
-      table.preview th.col-letter.selected {
-        background: #0b3a52;
-      }
-      .row-num {
-        color: var(--muted);
-        text-align: center;
-        font-size: 12px;
-        background: #0f172a;
-      }
-      .skipped-row td:not(.row-num) {
-        color: var(--muted);
-        text-decoration: line-through;
-        opacity: 0.6;
-      }
+      table.preview th.col-letter input[type="radio"] { accent-color: var(--accent); transform: scale(1.1); }
+      table.preview th.col-letter.selected { background: var(--accent-light); }
+      .row-num { color: var(--muted); text-align: center; font-size: 12px; background: var(--bg); }
+      .skipped-row td:not(.row-num) { color: var(--muted); text-decoration: line-through; opacity: .55; }
       .hidden { display: none !important; }
     </style>
   </head>
   <body>
     <div class="wrap">
-      <div class="card">
-        <h1>Company Lookup</h1>
-        <p class="subtitle">
-          Find a company's official website and phone number — one at a time,
-          or in bulk from an Excel file.
-        </p>
-      </div>
 
-      <div class="card">
-        <h2>Single lookup</h2>
-        <form id="single-form">
-          <input
-            id="company"
-            type="text"
-            placeholder="e.g. TOO Ferronordic Kazakhstan"
-            autocomplete="off"
-            required
-          />
-          <button type="submit" id="single-submit">Search</button>
-        </form>
-        <div id="single-result" class="result">
-          <span class="hint">Enter a company name and press Search.</span>
+      <!-- Header -->
+      <div class="card header">
+        <div class="header-left">
+          <img src="/static/logo.svg" alt="EXIM" />
+          <h1>Поиск компаний</h1>
+        </div>
+        <div class="api-row">
+          <span>Serper API ключ:</span>
+          <input id="api-key" type="password" placeholder="Вставьте ключ" />
         </div>
       </div>
 
+      <!-- Single lookup -->
       <div class="card">
-        <h2>Bulk lookup from Excel</h2>
+        <h2>Поиск по названию</h2>
+        <form id="single-form">
+          <input id="company" type="text" placeholder="Например: ТОО Kaspi" autocomplete="off" required />
+          <button type="submit" id="single-submit">Найти</button>
+        </form>
+        <div id="single-result" class="result">
+          <span class="hint">Введите название компании и нажмите «Найти».</span>
+        </div>
+      </div>
+
+      <!-- Bulk lookup -->
+      <div class="card">
+        <h2>Массовый поиск из Excel</h2>
         <p class="subtitle">
-          Upload an <code>.xlsx</code> file. A preview appears so you can pick
-          the column that holds company names.
+          Загрузите <code>.xlsx</code> файл. Превью покажет первые строки — выберите
+          столбец с названиями компаний.
         </p>
 
         <form id="bulk-form">
           <input id="file" type="file" accept=".xlsx,.xlsm" required />
-          <button type="submit" id="bulk-submit" disabled>Process</button>
+          <button type="submit" id="bulk-submit" disabled>Обработать</button>
         </form>
 
         <div id="preview-section" class="hidden">
           <div class="options">
             <label>
               <input id="opt-skip-first" type="checkbox" />
-              Skip first row (header like "Company name")
+              Убрать первую строку (заголовок)
             </label>
             <label>
               <input id="opt-dedupe" type="checkbox" checked />
-              Remove duplicates
+              Убрать дубликаты
             </label>
           </div>
           <p class="hint" id="preview-hint">
-            Click a column letter to pick which column to process.
+            Нажмите на букву столбца, чтобы выбрать столбец с компаниями.
           </p>
           <div id="preview-wrap" class="preview-wrap"></div>
         </div>
 
         <div id="bulk-status" class="bulk-status">
-          <span class="hint">No file processed yet.</span>
+          <span class="hint">Файл ещё не загружен.</span>
         </div>
         <div id="bulk-results"></div>
         <div class="actions">
           <button id="download-btn" class="secondary" type="button" disabled>
-            Download results (.xlsx)
+            Скачать результат (.xlsx)
           </button>
         </div>
       </div>
+
     </div>
 
     <script>
-      const escapeHtml = (s) =>
+      const esc = (s) =>
         String(s ?? "")
           .replace(/&/g, "&amp;")
           .replace(/</g, "&lt;")
@@ -282,23 +236,30 @@
           .replace(/"/g, "&quot;")
           .replace(/'/g, "&#39;");
 
+      const apiKeyInput = document.getElementById("api-key");
+
+      // Persist key in localStorage.
+      apiKeyInput.value = localStorage.getItem("serper_key") || "";
+      apiKeyInput.addEventListener("input", () => {
+        localStorage.setItem("serper_key", apiKeyInput.value.trim());
+      });
+      function getApiKey() { return apiKeyInput.value.trim(); }
+
       // ---- single lookup ----
       const singleForm = document.getElementById("single-form");
       const singleInput = document.getElementById("company");
       const singleBtn = document.getElementById("single-submit");
       const singleResult = document.getElementById("single-result");
 
-      function renderSingle(data) {
-        const website = data.website
-          ? `<a href="${escapeHtml(data.website)}" target="_blank" rel="noopener">${escapeHtml(data.website)}</a>`
-          : '<span class="missing">not found</span>';
-        const phone = data.phone
-          ? escapeHtml(data.phone)
-          : '<span class="missing">not found</span>';
+      function renderSingle(d) {
+        const site = d.website
+          ? `<a href="${esc(d.website)}" target="_blank" rel="noopener">${esc(d.website)}</a>`
+          : '<span class="missing">не найден</span>';
+        const phone = d.phone ? esc(d.phone) : '<span class="missing">не найден</span>';
         singleResult.innerHTML = `
-          <div class="row"><div class="label">Company</div><div class="value">${escapeHtml(data.company || "")}</div></div>
-          <div class="row"><div class="label">Website</div><div class="value">${website}</div></div>
-          <div class="row"><div class="label">Phone</div><div class="value">${phone}</div></div>
+          <div class="row"><div class="label">Компания</div><div class="value">${esc(d.company)}</div></div>
+          <div class="row"><div class="label">Сайт</div><div class="value">${site}</div></div>
+          <div class="row"><div class="label">Телефон</div><div class="value">${phone}</div></div>
         `;
       }
 
@@ -306,25 +267,19 @@
         e.preventDefault();
         const company = singleInput.value.trim();
         if (!company) return;
-
         singleBtn.disabled = true;
-        singleResult.innerHTML =
-          '<span class="spinner"></span> Searching — this can take 10–30 seconds…';
-
+        singleResult.innerHTML = '<span class="spinner"></span> Ищем — это может занять 10–30 секунд…';
         try {
           const resp = await fetch("/search", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ company }),
+            body: JSON.stringify({ company, api_key: getApiKey() || undefined }),
           });
           if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${await resp.text()}`);
           renderSingle(await resp.json());
         } catch (err) {
-          singleResult.innerHTML =
-            '<span class="error">Error: ' + escapeHtml(err.message) + "</span>";
-        } finally {
-          singleBtn.disabled = false;
-        }
+          singleResult.innerHTML = '<span class="error">Ошибка: ' + esc(err.message) + "</span>";
+        } finally { singleBtn.disabled = false; }
       });
 
       // ---- bulk lookup ----
@@ -345,198 +300,89 @@
 
       function renderPreview(data) {
         previewData = data;
-        const columns = data.columns || [];
+        const cols = data.columns || [];
         const rows = data.rows || [];
+        if (!cols.length) { previewWrap.innerHTML = '<span class="error">Столбцы не найдены.</span>'; return; }
+        if (selectedColumn >= cols.length) selectedColumn = 0;
 
-        if (!columns.length) {
-          previewWrap.innerHTML =
-            '<span class="error">No columns detected in the file.</span>';
-          return;
-        }
+        const skip = optSkipFirst.checked;
+        const hdr = cols.map((l, i) => `
+          <th class="col-letter${i === selectedColumn ? " selected" : ""}" data-col="${i}">
+            <label><input type="radio" name="col-pick" value="${i}" ${i === selectedColumn ? "checked" : ""} />${esc(l)}</label>
+          </th>`).join("");
+        const body = rows.map((row, ri) => {
+          const cls = skip && ri === 0 ? ' class="skipped-row"' : "";
+          const cells = cols.map((_, ci) => `<td>${esc(row[ci] || "")}</td>`).join("");
+          return `<tr${cls}><td class="row-num">${ri + 1}</td>${cells}</tr>`;
+        }).join("");
 
-        if (selectedColumn >= columns.length) selectedColumn = 0;
+        previewWrap.innerHTML = `<table class="preview"><thead><tr><th class="row-num">#</th>${hdr}</tr></thead><tbody>${body}</tbody></table>`;
 
-        const headerCells = columns
-          .map(
-            (letter, i) => `
-              <th class="col-letter${i === selectedColumn ? " selected" : ""}" data-col="${i}">
-                <label>
-                  <input type="radio" name="col-pick" value="${i}" ${i === selectedColumn ? "checked" : ""} />
-                  ${escapeHtml(letter)}
-                </label>
-              </th>`
-          )
-          .join("");
-
-        const skipFirst = optSkipFirst.checked;
-        const bodyRows = rows
-          .map((row, rIdx) => {
-            const cells = columns
-              .map((_, cIdx) => `<td>${escapeHtml(row[cIdx] || "")}</td>`)
-              .join("");
-            const skipClass = skipFirst && rIdx === 0 ? " skipped-row" : "";
-            return `<tr class="${skipClass.trim()}">
-              <td class="row-num">${rIdx + 1}</td>${cells}
-            </tr>`;
-          })
-          .join("");
-
-        previewWrap.innerHTML = `
-          <table class="preview">
-            <thead>
-              <tr>
-                <th class="row-num">#</th>
-                ${headerCells}
-              </tr>
-            </thead>
-            <tbody>${bodyRows}</tbody>
-          </table>
-        `;
-
-        // Wire up column radio selection.
-        previewWrap
-          .querySelectorAll('input[name="col-pick"]')
-          .forEach((input) => {
-            input.addEventListener("change", () => {
-              selectedColumn = Number(input.value);
-              // Re-render to update highlighted column.
-              renderPreview(previewData);
-            });
-          });
+        previewWrap.querySelectorAll('input[name="col-pick"]').forEach(r => {
+          r.addEventListener("change", () => { selectedColumn = Number(r.value); renderPreview(previewData); });
+        });
       }
 
       async function loadPreview(file) {
-        bulkStatus.innerHTML =
-          '<span class="spinner"></span> Reading file…';
+        bulkStatus.innerHTML = '<span class="spinner"></span> Чтение файла…';
         previewSection.classList.add("hidden");
         bulkBtn.disabled = true;
-
         try {
-          const fd = new FormData();
-          fd.append("file", file);
-          const resp = await fetch("/preview-excel", {
-            method: "POST",
-            body: fd,
-          });
-          if (!resp.ok) {
-            let msg = `HTTP ${resp.status}`;
-            try {
-              const j = await resp.json();
-              if (j.detail) msg = j.detail;
-            } catch (_) {}
-            throw new Error(msg);
-          }
-
-          const data = await resp.json();
+          const fd = new FormData(); fd.append("file", file);
+          const resp = await fetch("/preview-excel", { method: "POST", body: fd });
+          if (!resp.ok) { let m = `HTTP ${resp.status}`; try { const j = await resp.json(); if (j.detail) m = j.detail; } catch(_){} throw new Error(m); }
           selectedColumn = 0;
-          renderPreview(data);
+          renderPreview(await resp.json());
           previewSection.classList.remove("hidden");
           bulkBtn.disabled = false;
-          bulkStatus.innerHTML =
-            '<span class="hint">Pick a column and press Process.</span>';
+          bulkStatus.innerHTML = '<span class="hint">Выберите столбец и нажмите «Обработать».</span>';
         } catch (err) {
-          bulkStatus.innerHTML =
-            '<span class="error">Preview failed: ' +
-            escapeHtml(err.message) +
-            "</span>";
+          bulkStatus.innerHTML = '<span class="error">Ошибка превью: ' + esc(err.message) + "</span>";
         }
       }
 
-      fileInput.addEventListener("change", () => {
-        const file = fileInput.files[0];
-        if (!file) {
-          previewSection.classList.add("hidden");
-          bulkBtn.disabled = true;
-          return;
-        }
-        loadPreview(file);
-      });
+      fileInput.addEventListener("change", () => { const f = fileInput.files[0]; if (f) loadPreview(f); else { previewSection.classList.add("hidden"); bulkBtn.disabled = true; } });
+      optSkipFirst.addEventListener("change", () => { if (previewData) renderPreview(previewData); });
 
-      optSkipFirst.addEventListener("change", () => {
-        if (previewData) renderPreview(previewData);
-      });
-
-      function renderTable(rows) {
-        if (!rows.length) {
-          bulkResults.innerHTML = "";
-          return;
-        }
-        const body = rows
-          .map((r) => {
-            const site = r.website
-              ? `<a href="${escapeHtml(r.website)}" target="_blank" rel="noopener">${escapeHtml(r.website)}</a>`
-              : '<span class="missing">—</span>';
-            const phone = r.phone
-              ? escapeHtml(r.phone)
-              : '<span class="missing">—</span>';
-            return `<tr>
-              <td>${escapeHtml(r.company)}</td>
-              <td>${site}</td>
-              <td>${phone}</td>
-            </tr>`;
-          })
-          .join("");
-
-        bulkResults.innerHTML = `
-          <table>
-            <thead>
-              <tr><th>Company</th><th>Website</th><th>Phone</th></tr>
-            </thead>
-            <tbody>${body}</tbody>
-          </table>
-        `;
+      function renderResultsTable(rows) {
+        if (!rows.length) { bulkResults.innerHTML = ""; return; }
+        const body = rows.map(r => {
+          const site = r.website
+            ? `<a href="${esc(r.website)}" target="_blank" rel="noopener">${esc(r.website)}</a>`
+            : '<span class="missing">—</span>';
+          const phone = r.phone ? esc(r.phone) : '<span class="missing">—</span>';
+          return `<tr><td>${esc(r.company)}</td><td>${site}</td><td>${phone}</td></tr>`;
+        }).join("");
+        bulkResults.innerHTML = `<table><thead><tr><th>Компания</th><th>Сайт</th><th>Телефон</th></tr></thead><tbody>${body}</tbody></table>`;
       }
 
       bulkForm.addEventListener("submit", async (e) => {
         e.preventDefault();
         const file = fileInput.files[0];
         if (!file) return;
-
-        bulkBtn.disabled = true;
-        downloadBtn.disabled = true;
-        lastRows = [];
-        bulkResults.innerHTML = "";
-        bulkStatus.innerHTML =
-          '<span class="spinner"></span> Uploading and processing — this can take a few minutes for large files…';
-
+        bulkBtn.disabled = true; downloadBtn.disabled = true;
+        lastRows = []; bulkResults.innerHTML = "";
+        bulkStatus.innerHTML = '<span class="spinner"></span> Обрабатываем — может занять несколько минут…';
         try {
           const fd = new FormData();
           fd.append("file", file);
           fd.append("column", String(selectedColumn));
           fd.append("skip_first_row", optSkipFirst.checked ? "true" : "false");
           fd.append("dedupe", optDedupe.checked ? "true" : "false");
-
-          const resp = await fetch("/search-excel", {
-            method: "POST",
-            body: fd,
-          });
-          if (!resp.ok) {
-            let msg = `HTTP ${resp.status}`;
-            try {
-              const j = await resp.json();
-              if (j.detail) msg = j.detail;
-            } catch (_) {}
-            throw new Error(msg);
-          }
-
+          fd.append("api_key", getApiKey());
+          const resp = await fetch("/search-excel", { method: "POST", body: fd });
+          if (!resp.ok) { let m = `HTTP ${resp.status}`; try { const j = await resp.json(); if (j.detail) m = j.detail; } catch(_){} throw new Error(m); }
           const data = await resp.json();
           lastRows = data.rows || [];
-
-          const okCount = lastRows.filter((r) => r.website).length;
-          let statusMsg = `Processed <strong>${data.count}</strong> companies — found websites for <strong>${okCount}</strong>.`;
-          if (data.truncated) {
-            statusMsg += ' <span class="hint">(input was capped at the server limit)</span>';
-          }
-          bulkStatus.innerHTML = statusMsg;
-
-          renderTable(lastRows);
+          const ok = lastRows.filter(r => r.website).length;
+          let msg = `Обработано <strong>${data.count}</strong> компаний — сайты найдены для <strong>${ok}</strong>.`;
+          if (data.truncated) msg += ' <span class="hint">(список обрезан по лимиту сервера)</span>';
+          bulkStatus.innerHTML = msg;
+          renderResultsTable(lastRows);
           downloadBtn.disabled = lastRows.length === 0;
         } catch (err) {
-          bulkStatus.innerHTML =
-            '<span class="error">Error: ' + escapeHtml(err.message) + "</span>";
-        } finally {
-          bulkBtn.disabled = false;
-        }
+          bulkStatus.innerHTML = '<span class="error">Ошибка: ' + esc(err.message) + "</span>";
+        } finally { bulkBtn.disabled = false; }
       });
 
       downloadBtn.addEventListener("click", async () => {
@@ -550,20 +396,13 @@
           });
           if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
           const blob = await resp.blob();
-          const url = URL.createObjectURL(blob);
           const a = document.createElement("a");
-          a.href = url;
+          a.href = URL.createObjectURL(blob);
           a.download = "companies_results.xlsx";
-          document.body.appendChild(a);
-          a.click();
-          a.remove();
-          URL.revokeObjectURL(url);
+          document.body.appendChild(a); a.click(); a.remove();
         } catch (err) {
-          bulkStatus.innerHTML =
-            '<span class="error">Download failed: ' + escapeHtml(err.message) + "</span>";
-        } finally {
-          downloadBtn.disabled = false;
-        }
+          bulkStatus.innerHTML = '<span class="error">Скачивание не удалось: ' + esc(err.message) + "</span>";
+        } finally { downloadBtn.disabled = false; }
       });
     </script>
   </body>

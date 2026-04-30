@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 48" fill="none">
+  <!-- Left arrow / chevron -->
+  <path d="M4 24 L18 8 L24 14 L14 24 L24 34 L18 40Z" fill="#E31E24"/>
+  <!-- E -->
+  <path d="M30 10h8v4h-4v8h3v4h-3v8h4v4h-8z" fill="#E31E24"/>
+  <!-- X -->
+  <path d="M44 10 L49 10 L53 18 L57 10 L62 10 L56 22 L63 38 L58 38 L53 28 L48 38 L43 38 L50 22Z" fill="#E31E24"/>
+  <!-- i -->
+  <path d="M67 10h5v4h-5zM67 18h5v20h-5z" fill="#1a1a1a"/>
+  <!-- M -->
+  <path d="M78 10h7l5 14 5-14h7v28h-5V18l-5 14h-4l-5-14v20h-5z" fill="#1a1a1a"/>
+</svg>

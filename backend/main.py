@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Optional
 
@@ -26,10 +27,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger("num_finder")
 
+BULK_WORKERS = 4
+
 app = FastAPI(
     title="Company Lookup",
     description="Find a company's official website and phone number by name.",
-    version="0.1.0",
+    version="0.2.0",
 )
 
 app.add_middleware(
@@ -42,6 +45,7 @@ app.add_middleware(
 
 class SearchRequest(BaseModel):
     company: str = Field(..., min_length=2, max_length=200)
+    api_key: Optional[str] = None
 
 
 class SearchResponse(BaseModel):
@@ -66,12 +70,12 @@ class ExportRequest(BaseModel):
     rows: list[ExportRow]
 
 
-def _lookup_one(company: str) -> SearchResponse:
+def _lookup_one(company: str, api_key: str | None = None) -> SearchResponse:
     company = company.strip()
-    logger.info("🔎 lookup: %s", company)
+    logger.info("lookup: %s", company)
 
     try:
-        website = find_company_website(company)
+        website = find_company_website(company, api_key=api_key)
     except Exception as e:
         logger.exception("website lookup crashed: %s", e)
         website = None
@@ -91,7 +95,7 @@ def search(req: SearchRequest) -> SearchResponse:
     company = req.company.strip()
     if not company:
         raise HTTPException(status_code=400, detail="company must not be empty")
-    return _lookup_one(company)
+    return _lookup_one(company, api_key=req.api_key)
 
 
 def _validate_xlsx(file: UploadFile) -> None:
@@ -105,9 +109,7 @@ def _validate_xlsx(file: UploadFile) -> None:
 
 @app.post("/preview-excel")
 async def preview_excel_endpoint(file: UploadFile = File(...)) -> dict:
-    """Return column letters and the first few rows of an uploaded xlsx."""
     _validate_xlsx(file)
-
     content = await file.read()
     if not content:
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
@@ -122,7 +124,6 @@ async def preview_excel_endpoint(file: UploadFile = File(...)) -> dict:
             status_code=400,
             detail="The uploaded file appears to be empty.",
         )
-
     return preview
 
 
@@ -132,9 +133,9 @@ async def search_excel(
     column: int = Form(0),
     skip_first_row: bool = Form(False),
     dedupe: bool = Form(True),
+    api_key: str = Form(""),
 ) -> BulkSearchResponse:
     _validate_xlsx(file)
-
     content = await file.read()
     if not content:
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
@@ -155,23 +156,21 @@ async def search_excel(
             detail="No company names found in the selected column.",
         )
 
+    key = api_key or None
     logger.info(
-        "bulk lookup: %d companies from %s (column=%d, skip_first_row=%s, dedupe=%s)",
-        len(names),
-        file.filename,
-        column,
-        skip_first_row,
-        dedupe,
+        "bulk lookup: %d companies from %s (col=%d, skip=%s, dedupe=%s)",
+        len(names), file.filename, column, skip_first_row, dedupe,
     )
 
-    rows: list[SearchResponse] = []
-    for idx, name in enumerate(names, start=1):
-        logger.info("[%d/%d] %s", idx, len(names), name)
+    def _do(name: str) -> SearchResponse:
         try:
-            rows.append(_lookup_one(name))
+            return _lookup_one(name, api_key=key)
         except Exception as e:
             logger.exception("lookup failed for %r: %s", name, e)
-            rows.append(SearchResponse(company=name, website=None, phone=None))
+            return SearchResponse(company=name, website=None, phone=None)
+
+    with ThreadPoolExecutor(max_workers=BULK_WORKERS) as pool:
+        rows = list(pool.map(_do, names))
 
     return BulkSearchResponse(
         count=len(rows),
@@ -182,20 +181,13 @@ async def search_excel(
 
 @app.post("/export-excel")
 def export_excel(req: ExportRequest) -> Response:
-    """Turn a list of result rows back into a downloadable xlsx file."""
     if not req.rows:
         raise HTTPException(status_code=400, detail="No rows to export.")
-
     data = build_results_workbook([r.model_dump() for r in req.rows])
-    headers = {
-        "Content-Disposition": 'attachment; filename="companies_results.xlsx"'
-    }
     return Response(
         content=data,
-        media_type=(
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        ),
-        headers=headers,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="companies_results.xlsx"'},
     )
 
 
@@ -210,9 +202,7 @@ def health() -> dict:
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 
 if FRONTEND_DIR.exists():
-    app.mount(
-        "/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static"
-    )
+    app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
 
     @app.get("/")
     def index() -> FileResponse:
