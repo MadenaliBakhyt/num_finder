@@ -131,23 +131,29 @@ def read_company_names(
     return names
 
 
+RESULT_COLUMNS = [
+    ("Компания",      "company",   40),
+    ("Сайт",          "website",   45),
+    ("Телефон",       "phone",     30),
+    ("Email",         "email",     35),
+    ("Instagram",     "instagram", 25),
+    ("Руководитель",  "director",  30),
+    ("Деятельность",  "activity",  50),
+]
+
+
 def build_results_workbook(rows: Iterable[dict]) -> bytes:
     """Serialize result rows to an xlsx byte blob."""
     wb = Workbook()
     ws = wb.active
     ws.title = "Results"
-    ws.append(["Company", "Website", "Phone"])
+    ws.append([col[0] for col in RESULT_COLUMNS])
 
     for r in rows:
-        ws.append([
-            r.get("company") or "",
-            r.get("website") or "",
-            r.get("phone") or "",
-        ])
+        ws.append([r.get(col[1]) or "" for col in RESULT_COLUMNS])
 
-    widths = {"A": 40, "B": 45, "C": 30}
-    for col, width in widths.items():
-        ws.column_dimensions[col].width = width
+    for idx, (_, _, width) in enumerate(RESULT_COLUMNS, start=1):
+        ws.column_dimensions[_col_letter(idx - 1)].width = width
 
     buf = io.BytesIO()
     wb.save(buf)

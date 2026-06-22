@@ -30,7 +30,7 @@
       }
       .wrap {
         width: 100%;
-        max-width: 900px;
+        max-width: 1100px;
         display: flex;
         flex-direction: column;
         gap: 16px;
@@ -101,7 +101,7 @@
         padding-top: 12px; font-size: 14px; line-height: 1.6;
       }
       .row { display: flex; gap: 10px; }
-      .label { color: var(--muted); min-width: 80px; font-weight: 500; }
+      .label { color: var(--muted); min-width: 110px; font-weight: 500; }
       .value a { color: var(--accent); text-decoration: none; word-break: break-all; }
       .value a:hover { text-decoration: underline; }
       .error { color: var(--error); }
@@ -251,16 +251,25 @@
       const singleBtn = document.getElementById("single-submit");
       const singleResult = document.getElementById("single-result");
 
+      const FIELDS = [
+        { key: "company",   label: "Компания" },
+        { key: "website",   label: "Сайт",          isLink: true },
+        { key: "phone",     label: "Телефон" },
+        { key: "email",     label: "Email" },
+        { key: "instagram", label: "Instagram" },
+        { key: "director",  label: "Руководитель" },
+        { key: "activity",  label: "Деятельность" },
+      ];
+
       function renderSingle(d) {
-        const site = d.website
-          ? `<a href="${esc(d.website)}" target="_blank" rel="noopener">${esc(d.website)}</a>`
-          : '<span class="missing">не найден</span>';
-        const phone = d.phone ? esc(d.phone) : '<span class="missing">не найден</span>';
-        singleResult.innerHTML = `
-          <div class="row"><div class="label">Компания</div><div class="value">${esc(d.company)}</div></div>
-          <div class="row"><div class="label">Сайт</div><div class="value">${site}</div></div>
-          <div class="row"><div class="label">Телефон</div><div class="value">${phone}</div></div>
-        `;
+        singleResult.innerHTML = FIELDS.map(f => {
+          const raw = d[f.key];
+          let html;
+          if (!raw) html = '<span class="missing">не найден</span>';
+          else if (f.isLink) html = `<a href="${esc(raw)}" target="_blank" rel="noopener">${esc(raw)}</a>`;
+          else html = esc(raw);
+          return `<div class="row"><div class="label">${f.label}</div><div class="value">${html}</div></div>`;
+        }).join("");
       }
 
       singleForm.addEventListener("submit", async (e) => {
@@ -344,16 +353,29 @@
       fileInput.addEventListener("change", () => { const f = fileInput.files[0]; if (f) loadPreview(f); else { previewSection.classList.add("hidden"); bulkBtn.disabled = true; } });
       optSkipFirst.addEventListener("change", () => { if (previewData) renderPreview(previewData); });
 
+      const TABLE_COLS = [
+        { key: "company",   th: "Компания" },
+        { key: "website",   th: "Сайт",          isLink: true },
+        { key: "phone",     th: "Телефон" },
+        { key: "email",     th: "Email" },
+        { key: "instagram", th: "Instagram" },
+        { key: "director",  th: "Руководитель" },
+        { key: "activity",  th: "Деятельность" },
+      ];
+
       function renderResultsTable(rows) {
         if (!rows.length) { bulkResults.innerHTML = ""; return; }
+        const hdr = TABLE_COLS.map(c => `<th>${c.th}</th>`).join("");
         const body = rows.map(r => {
-          const site = r.website
-            ? `<a href="${esc(r.website)}" target="_blank" rel="noopener">${esc(r.website)}</a>`
-            : '<span class="missing">—</span>';
-          const phone = r.phone ? esc(r.phone) : '<span class="missing">—</span>';
-          return `<tr><td>${esc(r.company)}</td><td>${site}</td><td>${phone}</td></tr>`;
+          const cells = TABLE_COLS.map(c => {
+            const v = r[c.key];
+            if (!v) return '<td><span class="missing">—</span></td>';
+            if (c.isLink) return `<td><a href="${esc(v)}" target="_blank" rel="noopener">${esc(v)}</a></td>`;
+            return `<td>${esc(v)}</td>`;
+          }).join("");
+          return `<tr>${cells}</tr>`;
         }).join("");
-        bulkResults.innerHTML = `<table><thead><tr><th>Компания</th><th>Сайт</th><th>Телефон</th></tr></thead><tbody>${body}</tbody></table>`;
+        bulkResults.innerHTML = `<div class="preview-wrap"><table><thead><tr>${hdr}</tr></thead><tbody>${body}</tbody></table></div>`;
       }
 
       bulkForm.addEventListener("submit", async (e) => {

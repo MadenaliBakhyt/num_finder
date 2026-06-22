@@ -18,8 +18,7 @@ from backend.services.excel import (
     preview_excel,
     read_company_names,
 )
-from backend.services.parser import extract_phone_from_website
-from backend.services.search import find_company_website
+from backend.services.pipeline import CompanyInfo, enrich_company
 
 logging.basicConfig(
     level=logging.INFO,
@@ -31,8 +30,8 @@ BULK_WORKERS = 4
 
 app = FastAPI(
     title="Company Lookup",
-    description="Find a company's official website and phone number by name.",
-    version="0.2.0",
+    description="Find company website, phone, email, instagram, director, activity.",
+    version="0.3.0",
 )
 
 app.add_middleware(
@@ -43,20 +42,18 @@ app.add_middleware(
 )
 
 
+# ---------------------------------------------------------------------------
+# Request / response models
+# ---------------------------------------------------------------------------
+
 class SearchRequest(BaseModel):
     company: str = Field(..., min_length=2, max_length=200)
     api_key: Optional[str] = None
 
 
-class SearchResponse(BaseModel):
-    company: str
-    website: Optional[str] = None
-    phone: Optional[str] = None
-
-
 class BulkSearchResponse(BaseModel):
     count: int
-    rows: list[SearchResponse]
+    rows: list[CompanyInfo]
     truncated: bool = False
 
 
@@ -64,47 +61,41 @@ class ExportRow(BaseModel):
     company: str
     website: Optional[str] = None
     phone: Optional[str] = None
+    email: Optional[str] = None
+    instagram: Optional[str] = None
+    director: Optional[str] = None
+    activity: Optional[str] = None
 
 
 class ExportRequest(BaseModel):
     rows: list[ExportRow]
 
 
-def _lookup_one(company: str, api_key: str | None = None) -> SearchResponse:
-    company = company.strip()
-    logger.info("lookup: %s", company)
+# ---------------------------------------------------------------------------
+# Endpoints
+# ---------------------------------------------------------------------------
 
+def _lookup(name: str, api_key: str | None) -> CompanyInfo:
     try:
-        website = find_company_website(company, api_key=api_key)
+        return enrich_company(name, api_key=api_key)
     except Exception as e:
-        logger.exception("website lookup crashed: %s", e)
-        website = None
-
-    phone: Optional[str] = None
-    if website:
-        try:
-            phone = extract_phone_from_website(website)
-        except Exception as e:
-            logger.exception("phone extraction crashed: %s", e)
-
-    return SearchResponse(company=company, website=website, phone=phone)
+        logger.exception("lookup crashed for %r: %s", name, e)
+        return CompanyInfo(company=name.strip())
 
 
-@app.post("/search", response_model=SearchResponse)
-def search(req: SearchRequest) -> SearchResponse:
+@app.post("/search", response_model=CompanyInfo)
+def search(req: SearchRequest) -> CompanyInfo:
     company = req.company.strip()
     if not company:
         raise HTTPException(status_code=400, detail="company must not be empty")
-    return _lookup_one(company, api_key=req.api_key)
+    logger.info("== single lookup: %s", company)
+    return _lookup(company, req.api_key)
 
 
 def _validate_xlsx(file: UploadFile) -> None:
     filename = (file.filename or "").lower()
     if not filename.endswith((".xlsx", ".xlsm")):
-        raise HTTPException(
-            status_code=400,
-            detail="Only .xlsx/.xlsm files are supported.",
-        )
+        raise HTTPException(status_code=400, detail="Only .xlsx/.xlsm files are supported.")
 
 
 @app.post("/preview-excel")
@@ -113,17 +104,12 @@ async def preview_excel_endpoint(file: UploadFile = File(...)) -> dict:
     content = await file.read()
     if not content:
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
-
     try:
         preview = preview_excel(content)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
-
     if not preview.get("total_columns"):
-        raise HTTPException(
-            status_code=400,
-            detail="The uploaded file appears to be empty.",
-        )
+        raise HTTPException(status_code=400, detail="The uploaded file appears to be empty.")
     return preview
 
 
@@ -142,40 +128,25 @@ async def search_excel(
 
     try:
         names = read_company_names(
-            content,
-            column_index=column,
-            skip_first_row=skip_first_row,
-            dedupe=dedupe,
+            content, column_index=column, skip_first_row=skip_first_row, dedupe=dedupe,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
     if not names:
-        raise HTTPException(
-            status_code=400,
-            detail="No company names found in the selected column.",
-        )
+        raise HTTPException(status_code=400, detail="No company names found in the selected column.")
 
     key = api_key or None
-    logger.info(
-        "bulk lookup: %d companies from %s (col=%d, skip=%s, dedupe=%s)",
-        len(names), file.filename, column, skip_first_row, dedupe,
-    )
+    logger.info("== bulk lookup: %d companies (col=%d)", len(names), column)
 
-    def _do(name: str) -> SearchResponse:
-        try:
-            return _lookup_one(name, api_key=key)
-        except Exception as e:
-            logger.exception("lookup failed for %r: %s", name, e)
-            return SearchResponse(company=name, website=None, phone=None)
+    def _do(name: str) -> CompanyInfo:
+        return _lookup(name, key)
 
     with ThreadPoolExecutor(max_workers=BULK_WORKERS) as pool:
         rows = list(pool.map(_do, names))
 
     return BulkSearchResponse(
-        count=len(rows),
-        rows=rows,
-        truncated=len(names) >= MAX_COMPANIES,
+        count=len(rows), rows=rows, truncated=len(names) >= MAX_COMPANIES,
     )
 
 
