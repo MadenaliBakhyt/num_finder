@@ -1,31 +1,19 @@
-"""Enrichment pipeline — orchestrates multi-source data collection."""
+"""Enrichment pipeline — company website + ba.prg.kz data collection."""
 from __future__ import annotations
 
 import logging
-import re
 from typing import Optional
 
 from pydantic import BaseModel
 
 from backend.services.parser import (
-    PageData,
     extract_from_snippets,
-    parse_catalog_page,
+    parse_baprg_page,
     parse_company_website,
 )
-from backend.services.search import (
-    broad_search,
-    search_catalog,
-    search_instagram,
-)
+from backend.services.search import broad_search, search_baprg
 
 logger = logging.getLogger(__name__)
-
-MAX_QUERIES = 7
-
-CATALOG_SEARCH_ORDER = ["kompra.kz", "2gis.kz", "statsnet.co", "ba.prg.kz"]
-
-_IG_RE = re.compile(r"instagram\.com/([a-zA-Z0-9_.]+)")
 
 
 class CompanyInfo(BaseModel):
@@ -38,17 +26,6 @@ class CompanyInfo(BaseModel):
     activity: Optional[str] = None
 
 
-def _ig_from_url(url: str | None) -> Optional[str]:
-    if not url:
-        return None
-    m = _IG_RE.search(url)
-    return f"@{m.group(1)}" if m else None
-
-
-def _still_missing(info: CompanyInfo) -> bool:
-    return not (info.phone and info.director and info.activity)
-
-
 def enrich_company(company_name: str, api_key: str | None = None) -> CompanyInfo:
     info = CompanyInfo(company=company_name.strip())
     if not api_key:
@@ -57,20 +34,10 @@ def enrich_company(company_name: str, api_key: str | None = None) -> CompanyInfo
 
     all_phones: list[str] = []
     all_emails: list[str] = []
-    all_ig: list[str] = []
-    director: Optional[str] = None
-    activity: Optional[str] = None
 
-    # ── Phase 1: broad search (up to 3 Serper queries) ──────────────
+    # ── Phase 1: Serper broad search (up to 3 queries) ──────────────
     sr = broad_search(company_name, api_key, max_queries=3)
-    budget = MAX_QUERIES - sr.queries_used
-
     info.website = sr.website
-
-    if sr.instagram_url:
-        ig = _ig_from_url(sr.instagram_url)
-        if ig:
-            all_ig.append(ig)
 
     # ── Phase 2: parse company website ──────────────────────────────
     if info.website:
@@ -78,70 +45,57 @@ def enrich_company(company_name: str, api_key: str | None = None) -> CompanyInfo
         wd = parse_company_website(info.website)
         all_phones.extend(wd.phones)
         all_emails.extend(wd.emails)
-        all_ig.extend(wd.instagrams)
+        if wd.instagrams:
+            info.instagram = wd.instagrams[0]
 
-    # ── Phase 3: snippets (free) ────────────────────────────────────
+    # ── Phase 3: extract from Serper snippets (free) ────────────────
     sd = extract_from_snippets(sr.all_results)
     all_phones.extend(sd.phones)
     all_emails.extend(sd.emails)
 
-    # ── Phase 4: catalog search + parse ─────────────────────────────
-    catalog_urls = dict(sr.catalog_urls)
+    # ── Phase 4: ba.prg.kz — director, activity, contacts ──────────
+    baprg_url = sr.baprg_url
+    if not baprg_url:
+        logger.info("  serper: searching ba.prg.kz")
+        baprg_url = search_baprg(company_name, api_key)
 
-    for domain in CATALOG_SEARCH_ORDER:
-        if budget <= 0:
-            break
-        if domain in catalog_urls:
-            continue
-        if not _still_missing(info):
-            break
-        logger.info("  serper catalog: %s", domain)
-        url = search_catalog(company_name, domain, api_key)
-        budget -= 1
-        if url:
-            catalog_urls[domain] = url
-
-    for domain, url in catalog_urls.items():
-        logger.info("  parse catalog %s: %s", domain, url)
+    if baprg_url:
+        logger.info("  parse ba.prg.kz: %s", baprg_url)
         try:
-            cd = parse_catalog_page(url)
-        except Exception as e:
-            logger.warning("  catalog parse failed %s: %s", url, e)
-            continue
-        all_phones.extend(cd.phones)
-        all_emails.extend(cd.emails)
-        if not director and cd.director:
-            director = cd.director
-        if not activity and cd.activity:
-            activity = cd.activity
+            bd = parse_baprg_page(baprg_url)
+            info.director = bd.director
+            info.activity = bd.activity
+            all_phones.extend(bd.phones)
+            all_emails.extend(bd.emails)
 
-    # ── Phase 5: Instagram search ───────────────────────────────────
-    if not all_ig and budget > 0:
-        logger.info("  serper instagram")
-        ig_url = search_instagram(company_name, api_key)
-        budget -= 1
-        ig = _ig_from_url(ig_url)
-        if ig:
-            all_ig.append(ig)
+            # Use ba.prg.kz website as fallback if we didn't find one via Serper
+            if not info.website and bd.website:
+                info.website = bd.website
+                # Also try to parse that site for contacts
+                logger.info("  parse website (from ba.prg): %s", bd.website)
+                wd2 = parse_company_website(bd.website)
+                all_phones.extend(wd2.phones)
+                all_emails.extend(wd2.emails)
+                if not info.instagram and wd2.instagrams:
+                    info.instagram = wd2.instagrams[0]
+        except Exception as e:
+            logger.warning("  ba.prg.kz parse failed: %s", e)
 
     # ── Build final result ──────────────────────────────────────────
     phones = list(dict.fromkeys(all_phones))[:5]
     emails = list(dict.fromkeys(all_emails))[:3]
-    instagrams = list(dict.fromkeys(all_ig))
 
     info.phone = ", ".join(phones) or None
     info.email = ", ".join(emails) or None
-    info.instagram = instagrams[0] if instagrams else None
-    info.director = director
-    info.activity = activity
 
     logger.info(
-        "  DONE %s  web=%s  phones=%d  emails=%d  ig=%s  dir=%s",
+        "  DONE %s  web=%s  ph=%d  em=%d  ig=%s  dir=%s  act=%s",
         company_name,
         bool(info.website),
         len(phones),
         len(emails),
         bool(info.instagram),
         bool(info.director),
+        bool(info.activity),
     )
     return info

@@ -1,4 +1,4 @@
-"""Serper API wrapper — website search, catalog search, Instagram search."""
+"""Serper API wrapper — website search, ba.prg.kz lookup, Instagram."""
 from __future__ import annotations
 
 import logging
@@ -18,12 +18,19 @@ _session = requests.Session()
 
 BAD_DOMAINS = [
     "wikipedia", "wikimedia.org",
-    "linkedin", "facebook", "youtube",
+    "linkedin", "facebook", "youtube", "twitter.com", "x.com",
     "hh.kz", "hh.ru",
     "niac.kz", "safedeal.kz",
+    "kompra.kz", "statsnet.co",
+    "2gis", "flamp.kz",
+    "prg.kz", "ba.prg.kz",
+    "cdb.kz",
+    "opnbk.kz",
+    ".gov.kz",
+    "rusprofile.ru", "list-org.com",
+    "zoominfo.com", "bloomberg.com",
+    "kompass.com", "en.nbd.ltd",
 ]
-
-CATALOG_DOMAINS = ("kompra.kz", "2gis.kz", "statsnet.co", "ba.prg.kz")
 
 
 def clean_name(name: str) -> str:
@@ -51,7 +58,7 @@ def serper_search(query: str, api_key: str, num: int = 5) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
-# Scoring (for official website only)
+# Scoring — for the company's OWN website only
 # ---------------------------------------------------------------------------
 
 def score_url(url: str, title: str, company_name: str) -> int:
@@ -63,9 +70,10 @@ def score_url(url: str, title: str, company_name: str) -> int:
 
     if any(b in url_low for b in BAD_DOMAINS):
         return -100
-    if any(c in url_low for c in CATALOG_DOMAINS):
-        return -100
     if "instagram.com" in url_low:
+        return -100
+    # Reject URLs that look like registry/API pages
+    if "/registry/" in url_low or "/api/" in url_low or "/sistema/" in url_low:
         return -100
 
     score = 0
@@ -99,14 +107,13 @@ def _pick_best_website(results: list[dict], company: str) -> Optional[str]:
 @dataclass
 class SearchResults:
     website: Optional[str] = None
-    catalog_urls: dict[str, str] = field(default_factory=dict)
-    instagram_url: Optional[str] = None
+    baprg_url: Optional[str] = None
     all_results: list[dict] = field(default_factory=list)
     queries_used: int = 0
 
 
 def broad_search(company_name: str, api_key: str, max_queries: int = 3) -> SearchResults:
-    """Phase 1: search for website + collect catalog/instagram URLs from results."""
+    """Search for company website + collect ba.prg.kz URL from results."""
     name = clean_name(company_name)
     queries = [
         f"{name} официальный сайт Казахстан",
@@ -133,30 +140,21 @@ def broad_search(company_name: str, api_key: str, max_queries: int = 3) -> Searc
 
     sr.all_results = all_results
 
+    # Collect ba.prg.kz URL from the organic results
     for item in all_results:
         link = (item.get("link") or "").lower()
-        for domain in CATALOG_DOMAINS:
-            if domain in link and domain not in sr.catalog_urls:
-                sr.catalog_urls[domain] = item["link"]
-        if "instagram.com" in link and not sr.instagram_url:
-            sr.instagram_url = item["link"]
+        if "ba.prg.kz" in link and not sr.baprg_url:
+            sr.baprg_url = item["link"]
+            break
 
     return sr
 
 
-def search_catalog(company_name: str, domain: str, api_key: str) -> Optional[str]:
+def search_baprg(company_name: str, api_key: str) -> Optional[str]:
+    """Targeted search for this company on ba.prg.kz."""
     name = clean_name(company_name)
-    results = serper_search(f'"{name}" site:{domain}', api_key, num=3)
+    results = serper_search(f'"{name}" site:ba.prg.kz', api_key, num=3)
     for r in results:
-        if domain in (r.get("link") or "").lower():
-            return r["link"]
-    return None
-
-
-def search_instagram(company_name: str, api_key: str) -> Optional[str]:
-    name = clean_name(company_name)
-    results = serper_search(f'"{name}" instagram Казахстан', api_key, num=3)
-    for r in results:
-        if "instagram.com" in (r.get("link") or "").lower():
+        if "ba.prg.kz" in (r.get("link") or "").lower():
             return r["link"]
     return None
