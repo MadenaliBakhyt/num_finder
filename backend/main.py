@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Optional
@@ -75,9 +76,17 @@ class ExportRequest(BaseModel):
 # Endpoints
 # ---------------------------------------------------------------------------
 
+def _resolve_api_key(api_key: str | None) -> str | None:
+    """Use the provided key, or fall back to the SERPER_API_KEY env var."""
+    if api_key:
+        return api_key
+    return os.environ.get("SERPER_API_KEY") or None
+
+
 def _lookup(name: str, api_key: str | None) -> CompanyInfo:
+    key = _resolve_api_key(api_key)
     try:
-        return enrich_company(name, api_key=api_key)
+        return enrich_company(name, api_key=key)
     except Exception as e:
         logger.exception("lookup crashed for %r: %s", name, e)
         return CompanyInfo(company=name.strip())
@@ -136,7 +145,7 @@ async def search_excel(
     if not names:
         raise HTTPException(status_code=400, detail="No company names found in the selected column.")
 
-    key = api_key or None
+    key = _resolve_api_key(api_key or None)
     logger.info("== bulk lookup: %d companies (col=%d)", len(names), column)
 
     def _do(name: str) -> CompanyInfo:
