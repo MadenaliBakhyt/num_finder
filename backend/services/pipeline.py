@@ -6,14 +6,12 @@ from typing import Optional
 
 from pydantic import BaseModel
 
-from backend.services.parser import (
-    extract_from_snippets,
-    parse_baprg_page,
-    parse_company_website,
-)
+from backend.services.parser import parse_baprg_page, parse_company_website
 from backend.services.search import broad_search, search_baprg
 
 logger = logging.getLogger(__name__)
+
+NO_WEBSITE = "Нету сайта"
 
 
 class CompanyInfo(BaseModel):
@@ -30,6 +28,7 @@ def enrich_company(company_name: str, api_key: str | None = None) -> CompanyInfo
     info = CompanyInfo(company=company_name.strip())
     if not api_key:
         logger.error("No API key — skipping %s", company_name)
+        info.website = NO_WEBSITE
         return info
 
     all_phones: list[str] = []
@@ -37,9 +36,9 @@ def enrich_company(company_name: str, api_key: str | None = None) -> CompanyInfo
 
     # ── Phase 1: Serper broad search (up to 3 queries) ──────────────
     sr = broad_search(company_name, api_key, max_queries=3)
-    info.website = sr.website
+    info.website = sr.website  # None if not found
 
-    # ── Phase 2: parse company website ──────────────────────────────
+    # ── Phase 2: parse company website (only if it's a REAL site) ───
     if info.website:
         logger.info("  parse website: %s", info.website)
         wd = parse_company_website(info.website)
@@ -48,12 +47,7 @@ def enrich_company(company_name: str, api_key: str | None = None) -> CompanyInfo
         if wd.instagrams:
             info.instagram = wd.instagrams[0]
 
-    # ── Phase 3: extract from Serper snippets (free) ────────────────
-    sd = extract_from_snippets(sr.all_results)
-    all_phones.extend(sd.phones)
-    all_emails.extend(sd.emails)
-
-    # ── Phase 4: ba.prg.kz — director, activity, contacts ──────────
+    # ── Phase 3: ba.prg.kz — director, activity, contacts ──────────
     baprg_url = sr.baprg_url
     if not baprg_url:
         logger.info("  serper: searching ba.prg.kz")
@@ -68,10 +62,9 @@ def enrich_company(company_name: str, api_key: str | None = None) -> CompanyInfo
             all_phones.extend(bd.phones)
             all_emails.extend(bd.emails)
 
-            # Use ba.prg.kz website as fallback if we didn't find one via Serper
+            # If ba.prg.kz lists a company website and we haven't found one
             if not info.website and bd.website:
                 info.website = bd.website
-                # Also try to parse that site for contacts
                 logger.info("  parse website (from ba.prg): %s", bd.website)
                 wd2 = parse_company_website(bd.website)
                 all_phones.extend(wd2.phones)
@@ -88,10 +81,14 @@ def enrich_company(company_name: str, api_key: str | None = None) -> CompanyInfo
     info.phone = ", ".join(phones) or None
     info.email = ", ".join(emails) or None
 
+    # "Нету сайта" if no official website found
+    if not info.website:
+        info.website = NO_WEBSITE
+
     logger.info(
         "  DONE %s  web=%s  ph=%d  em=%d  ig=%s  dir=%s  act=%s",
         company_name,
-        bool(info.website),
+        info.website != NO_WEBSITE,
         len(phones),
         len(emails),
         bool(info.instagram),

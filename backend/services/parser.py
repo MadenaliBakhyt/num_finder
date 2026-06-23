@@ -26,19 +26,40 @@ RAW_PHONE_RE = re.compile(r"\+?\d[\d\s\-\(\)]{8,}")
 EMAIL_RE = re.compile(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}")
 INSTAGRAM_RE = re.compile(r"(?:https?://)?(?:www\.)?instagram\.com/([a-zA-Z0-9_.]+)/?")
 
-# Catalog / registry emails we should never return as the company's email
+# Emails from catalog/registry sites — never the company's own
 _BAD_EMAIL_DOMAINS = [
     "prg.kz", "cdb.kz", "kompra.kz", "statsnet.co",
-    "gov.kz", "example.com", "domain.com",
+    "gov.kz", "ecc.kz", "uchet.kz", "kiberon.kz",
+    "adata.kz", "enbek.kz", "qoldau.kz",
+    "example.com", "domain.com",
 ]
 
-_IG_SKIP = {"p", "reel", "reels", "stories", "explore", "accounts",
-            "about", "developer", "legal", "static", "api", ""}
+_JUNK_EMAILS = {"rating@mail.ru"}
 
+# Registry/support phone numbers (appear on 10+ unrelated companies)
+_JUNK_PHONES = {
+    "+77172609090", "+77172735515", "+77059565388",  # goszakup.gov.kz
+    "+77780030198",  # kiberon.kz
+}
 
-# ---------------------------------------------------------------------------
-# Data container
-# ---------------------------------------------------------------------------
+_IG_SKIP = {
+    "p", "reel", "reels", "stories", "explore", "accounts",
+    "about", "developer", "legal", "static", "api", "",
+}
+
+# Instagram accounts that belong to catalog/registry sites, not companies
+_IG_CATALOG_ACCOUNTS = {
+    "uchet24", "uchet.kz", "enbek.kz", "adata.kz", "cdb.kz",
+    "kiberon.kz", "kompra.kz", "prg.kz",
+}
+
+# Activity must NOT contain these — they indicate sidebar/menu garbage
+_ACTIVITY_GARBAGE = re.compile(
+    r"Связи|Суды|Риски|Получите расширенный|Редактировать|Скрыть|"
+    r"Распечатать|Подписаться|Сводная инфор|Сотрудники \d",
+    re.I,
+)
+
 
 @dataclass
 class PageData:
@@ -47,7 +68,7 @@ class PageData:
     instagrams: list[str] = field(default_factory=list)
     director: Optional[str] = None
     activity: Optional[str] = None
-    website: Optional[str] = None  # website found on ba.prg.kz
+    website: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -73,7 +94,7 @@ def clean_phones(raw: list[str]) -> list[str]:
         digits = re.sub(r"\D", "", p)
         if len(digits) == 11 and digits[0] in ("7", "8"):
             phone = "+7" + digits[1:]
-            if len(set(phone)) > 3:
+            if len(set(phone)) > 3 and phone not in _JUNK_PHONES:
                 out.append(phone)
     return list(dict.fromkeys(out))
 
@@ -86,6 +107,8 @@ def _clean_emails(raw: list[str]) -> list[str]:
         if any(low.endswith(x) for x in bad_ext):
             continue
         if any(d in low for d in _BAD_EMAIL_DOMAINS):
+            continue
+        if low in _JUNK_EMAILS:
             continue
         out.append(e)
     return list(dict.fromkeys(out))
@@ -100,8 +123,48 @@ def _extract_ig(html: str) -> list[str]:
             continue
         if len(username) < 3:
             continue
+        if "." in username:
+            continue
+        if username in _IG_CATALOG_ACCOUNTS:
+            continue
         result.append(f"@{m}")
     return list(dict.fromkeys(result))
+
+
+def _validate_director(text: str | None) -> Optional[str]:
+    """Director must be 2-3 Cyrillic/Latin words, each capitalized."""
+    if not text:
+        return None
+    text = text.strip()
+    # Remove trailing noise like "Проверено:", links, etc.
+    text = re.sub(r"\s*(Проверено|Национальное|Комитет).*", "", text).strip()
+    words = text.split()
+    if len(words) < 2 or len(words) > 4:
+        return None
+    # Each word should start with uppercase
+    for w in words:
+        if not re.match(r"^[А-ЯЁA-Z]", w):
+            return None
+    return text
+
+
+def _validate_activity(text: str | None) -> Optional[str]:
+    """Activity must be a real business description, not sidebar garbage."""
+    if not text:
+        return None
+    text = text.strip()
+    # Clean trailing metadata FIRST, then check for garbage
+    text = re.sub(r"\s*БИН[:\s].*", "", text).strip()
+    text = re.sub(r"\s*Проверено[:\s].*", "", text).strip()
+    text = re.sub(r"\s*Различается.*", "", text).strip()
+    text = re.sub(r"\s*Редактировать.*", "", text).strip()
+    text = re.sub(r"\s*Распечатать.*", "", text).strip()
+    text = re.sub(r"\s*New\b.*", "", text).strip()
+    if _ACTIVITY_GARBAGE.search(text):
+        return None
+    if len(text) < 10:
+        return None
+    return text[:200]
 
 
 # ---------------------------------------------------------------------------
@@ -109,7 +172,6 @@ def _extract_ig(html: str) -> list[str]:
 # ---------------------------------------------------------------------------
 
 def parse_company_website(url: str) -> PageData:
-    """Parse a company's own website for phones, emails, Instagram links."""
     data = PageData()
     base = url.rstrip("/")
 
@@ -131,86 +193,66 @@ def parse_company_website(url: str) -> PageData:
 # ba.prg.kz parser
 # ---------------------------------------------------------------------------
 
-def _get_value_after_label(soup: BeautifulSoup, label_text: str) -> Optional[str]:
-    """Find a label element containing `label_text` and return the next
-    sibling element's text (typical ba.prg.kz label→value layout)."""
-    for el in soup.find_all(string=re.compile(re.escape(label_text), re.I)):
-        parent = el.find_parent()
-        if not parent:
-            continue
-        # Try next sibling element
-        nxt = parent.find_next_sibling()
-        if nxt:
-            text = nxt.get_text(" ", strip=True)
-            if text and text.lower() not in ("", "информация в источнике отсутствует"):
-                return text
-        # Try parent's next sibling (in case label is nested deeper)
-        parent_row = parent.find_parent()
-        if parent_row:
-            nxt = parent_row.find_next_sibling()
-            if nxt:
-                text = nxt.get_text(" ", strip=True)
-                if text and text.lower() not in ("", "информация в источнике отсутствует"):
-                    return text
-    return None
-
-
 def parse_baprg_page(url: str) -> PageData:
-    """Parse a ba.prg.kz company page for director, activity, contacts."""
     data = PageData()
     html = _fetch(url)
     if not html:
         return data
 
     soup = BeautifulSoup(html, "html.parser")
-    full_text = soup.get_text(" ", strip=True)
+    full_text = soup.get_text("\n", strip=True)
 
     # ── Director ────────────────────────────────────────────────────
-    for label in ("Руководитель компании", "Первый руководитель", "Руководитель"):
-        val = _get_value_after_label(soup, label)
-        if val:
-            # Clean: take only the name part (uppercase Cyrillic words)
-            name_match = re.match(r"([А-ЯЁ][А-ЯЁа-яё\s\-]+)", val)
-            if name_match:
-                data.director = name_match.group(1).strip()
-            else:
-                data.director = val[:100]
-            break
-
-    # If regex on structured HTML didn't work, try plain text
-    if not data.director:
-        m = re.search(
-            r"Руководитель\s+компании\s+([А-ЯЁ][А-ЯЁа-яё]+\s+[А-ЯЁ][А-ЯЁа-яё]+(?:\s+[А-ЯЁ][А-ЯЁа-яё]+)?)",
-            full_text,
-        )
+    # ba.prg.kz shows: "Руководитель компании\n<NAME>"
+    # The name is typically in ALL CAPS Cyrillic
+    for pattern in [
+        r"Руководитель\s+компании\s*\n?\s*([А-ЯЁ][А-ЯЁа-яё\s\-]{5,60})",
+        r"Первый руководитель\s*\n?\s*([А-ЯЁ][А-ЯЁа-яё\s\-]{5,60})",
+        r"Руководитель\s*[:\n]\s*([А-ЯЁ][А-ЯЁа-яё\s\-]{5,60})",
+    ]:
+        m = re.search(pattern, full_text)
         if m:
-            data.director = m.group(1).strip()
+            candidate = m.group(1).strip()
+            # Take first 2-4 words (the name)
+            words = candidate.split()
+            name_words = []
+            for w in words:
+                if re.match(r"^[А-ЯЁа-яё\-]+$", w):
+                    name_words.append(w)
+                else:
+                    break
+                if len(name_words) >= 4:
+                    break
+            if len(name_words) >= 2:
+                data.director = _validate_director(" ".join(name_words))
+                if data.director:
+                    break
 
     # ── Activity (Основной ОКЭД) ───────────────────────────────────
-    val = _get_value_after_label(soup, "Основной ОКЭД")
-    if val:
-        data.activity = val[:200]
-    else:
-        m = re.search(r"Основной ОКЭД\s+(.+?)(?:Вторичный|КАТО|$)", full_text)
+    # Format: "Основной ОКЭД\n46909 Оптовая торговля..." or similar
+    for pattern in [
+        r"Основной\s+ОКЭД\s*\n?\s*(\d{4,5}\s+[^\n]{10,})",
+        r"Основной\s+ОКЭД\s*\n?\s*([^\n]{10,200})",
+        r"Вид\s+деятельности\s*[:\n]\s*([^\n]{10,200})",
+    ]:
+        m = re.search(pattern, full_text)
         if m:
-            activity = m.group(1).strip()
-            # Remove trailing metadata
-            activity = re.sub(r"\s*Проверено:.*", "", activity)
-            activity = re.sub(r"\s*Различается.*", "", activity)
-            if len(activity) > 5:
-                data.activity = activity[:200]
+            candidate = m.group(1).strip()
+            validated = _validate_activity(candidate)
+            if validated:
+                data.activity = validated
+                break
 
-    # ── Phone (from tel: links) ────────────────────────────────────
+    # ── Phone (from tel: links in Контактные данные section) ───────
     for a_tag in soup.find_all("a", href=True):
         href = a_tag["href"]
         if href.lower().startswith("tel:"):
-            phone_raw = href[4:]
-            phones = clean_phones([phone_raw])
-            data.phones.extend(phones)
+            phone_text = href[4:].strip()
+            data.phones.extend(clean_phones([phone_text]))
 
-    # Fallback: regex in "Контактные данные" section text
+    # Fallback: regex near "Телефон" label
     if not data.phones:
-        m = re.search(r"Телефон\s+([\+\d\s\-\(\)]+)", full_text)
+        m = re.search(r"Телефон\s*\n?\s*(\+?\d[\d\s\-\(\)]{8,})", full_text)
         if m:
             data.phones = clean_phones([m.group(1)])
 
@@ -222,37 +264,20 @@ def parse_baprg_page(url: str) -> PageData:
             data.emails.append(email)
 
     if not data.emails:
-        m = re.search(r"E-mail\s+(\S+@\S+)", full_text)
+        m = re.search(r"E-mail\s*\n?\s*(\S+@\S+)", full_text)
         if m:
             data.emails.append(m.group(1))
 
     data.emails = _clean_emails(data.emails)
 
-    # ── Website ────────────────────────────────────────────────────
-    val = _get_value_after_label(soup, "Веб-сайт")
-    if val and "отсутствует" not in val.lower():
-        # Extract URL from text
-        url_match = re.search(r"(https?://\S+|www\.\S+|\S+\.\w{2,3})", val)
-        if url_match:
-            found = url_match.group(1)
+    # ── Website from ba.prg.kz contacts ────────────────────────────
+    m = re.search(r"Веб-сайт\s*\n?\s*(https?://\S+|www\.\S+)", full_text)
+    if m:
+        found = m.group(1).strip()
+        if "отсутствует" not in found.lower():
             if not found.startswith("http"):
                 found = "https://" + found
             data.website = found
 
     data.phones = list(dict.fromkeys(data.phones))
-    return data
-
-
-# ---------------------------------------------------------------------------
-# Snippet extractor (free — no HTTP)
-# ---------------------------------------------------------------------------
-
-def extract_from_snippets(results: list[dict]) -> PageData:
-    data = PageData()
-    for r in results:
-        snippet = r.get("snippet", "")
-        data.phones.extend(clean_phones(RAW_PHONE_RE.findall(snippet)))
-        data.emails.extend(_clean_emails(EMAIL_RE.findall(snippet)))
-    data.phones = list(dict.fromkeys(data.phones))
-    data.emails = list(dict.fromkeys(data.emails))
     return data

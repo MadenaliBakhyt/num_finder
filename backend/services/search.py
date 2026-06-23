@@ -1,4 +1,4 @@
-"""Serper API wrapper — website search, ba.prg.kz lookup, Instagram."""
+"""Serper API wrapper — website search, ba.prg.kz lookup."""
 from __future__ import annotations
 
 import logging
@@ -16,17 +16,30 @@ logger = logging.getLogger(__name__)
 SERPER_URL = "https://google.serper.dev/search"
 _session = requests.Session()
 
+# Every domain that is NOT a company's own site
 BAD_DOMAINS = [
+    # social / media
     "wikipedia", "wikimedia.org",
-    "linkedin", "facebook", "youtube", "twitter.com", "x.com",
-    "hh.kz", "hh.ru",
-    "niac.kz", "safedeal.kz",
-    "kompra.kz", "statsnet.co",
-    "2gis", "flamp.kz",
+    "linkedin", "facebook", "youtube", "twitter.com", "x.com", "tiktok.com",
+    # job boards
+    "hh.kz", "hh.ru", "enbek.kz",
+    # KZ business registries / catalogs
     "prg.kz", "ba.prg.kz",
-    "cdb.kz",
-    "opnbk.kz",
+    "kompra.kz", "statsnet.co",
+    "cdb.kz", "opnbk.kz",
+    "uchet.kz",
+    "kiberon.kz",
+    "adata.kz",
+    "ecc.kz",
+    "2gis",
+    "flamp.kz",
+    "niac.kz", "safedeal.kz",
+    # government
     ".gov.kz",
+    "qoldau.kz",
+    "adilet.zan.kz",
+    "mytenge.kz",
+    # international registries
     "rusprofile.ru", "list-org.com",
     "zoominfo.com", "bloomberg.com",
     "kompass.com", "en.nbd.ltd",
@@ -36,10 +49,6 @@ BAD_DOMAINS = [
 def clean_name(name: str) -> str:
     return re.sub(r"\(.*?\)", "", str(name)).strip()
 
-
-# ---------------------------------------------------------------------------
-# Low-level Serper call
-# ---------------------------------------------------------------------------
 
 def serper_search(query: str, api_key: str, num: int = 5) -> list[dict]:
     headers = {"X-API-KEY": api_key, "Content-Type": "application/json"}
@@ -57,10 +66,6 @@ def serper_search(query: str, api_key: str, num: int = 5) -> list[dict]:
     return resp.json().get("organic", [])
 
 
-# ---------------------------------------------------------------------------
-# Scoring — for the company's OWN website only
-# ---------------------------------------------------------------------------
-
 def score_url(url: str, title: str, company_name: str) -> int:
     if not url:
         return -100
@@ -72,8 +77,9 @@ def score_url(url: str, title: str, company_name: str) -> int:
         return -100
     if "instagram.com" in url_low:
         return -100
-    # Reject URLs that look like registry/API pages
     if "/registry/" in url_low or "/api/" in url_low or "/sistema/" in url_low:
+        return -100
+    if "/search?" in url_low or "/search/" in url_low:
         return -100
 
     score = 0
@@ -100,10 +106,6 @@ def _pick_best_website(results: list[dict], company: str) -> Optional[str]:
     return best if best_score >= 1 else None
 
 
-# ---------------------------------------------------------------------------
-# Structured search result
-# ---------------------------------------------------------------------------
-
 @dataclass
 class SearchResults:
     website: Optional[str] = None
@@ -113,7 +115,6 @@ class SearchResults:
 
 
 def broad_search(company_name: str, api_key: str, max_queries: int = 3) -> SearchResults:
-    """Search for company website + collect ba.prg.kz URL from results."""
     name = clean_name(company_name)
     queries = [
         f"{name} официальный сайт Казахстан",
@@ -140,7 +141,6 @@ def broad_search(company_name: str, api_key: str, max_queries: int = 3) -> Searc
 
     sr.all_results = all_results
 
-    # Collect ba.prg.kz URL from the organic results
     for item in all_results:
         link = (item.get("link") or "").lower()
         if "ba.prg.kz" in link and not sr.baprg_url:
@@ -151,7 +151,6 @@ def broad_search(company_name: str, api_key: str, max_queries: int = 3) -> Searc
 
 
 def search_baprg(company_name: str, api_key: str) -> Optional[str]:
-    """Targeted search for this company on ba.prg.kz."""
     name = clean_name(company_name)
     results = serper_search(f'"{name}" site:ba.prg.kz', api_key, num=3)
     for r in results:
